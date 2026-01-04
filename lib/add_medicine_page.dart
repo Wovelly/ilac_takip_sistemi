@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'ilac_model.dart'; // Modelimizi import ediyoruz
+import 'ilac_model.dart';
 
 class AddMedicinePage extends StatefulWidget {
-  // Düzenleme modu için dışarıdan 'Ilac' alabilen parametre
   final Ilac? duzenlenecekIlac;
 
   AddMedicinePage({Key? key, this.duzenlenecekIlac}) : super(key: key);
@@ -14,173 +13,242 @@ class AddMedicinePage extends StatefulWidget {
 class _AddMedicinePageState extends State<AddMedicinePage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _ilacAdiController = TextEditingController();
-  final List<TimeOfDay> _secilenSaatler = []; // Çoklu saat listesi
+  final TextEditingController _dozController = TextEditingController(); // YENİ: Doz girişi
+  final List<TimeOfDay> _secilenSaatler = [];
   String? _secilenDurum;
+  String _secilenTur = 'Hap';
 
-  // Sayfanın "Düzenleme Modu"nda olup olmadığını kontrol et
+  final List<String> _ilacTurleri = ['Hap', 'Şurup', 'İğne', 'Krem', 'Damla'];
+
   bool get _duzenlemeModu => widget.duzenlenecekIlac != null;
 
   @override
   void initState() {
     super.initState();
-    // Eğer düzenleme modundaysak, alanları eski ilaç bilgileriyle doldur
     if (_duzenlemeModu) {
       final ilac = widget.duzenlenecekIlac!;
       _ilacAdiController.text = ilac.ad;
+      _dozController.text = ilac.doz;
       _secilenDurum = ilac.durum;
+      _secilenTur = ilac.tur;
       _secilenSaatler.addAll(ilac.saatler);
     }
   }
 
-  // Saat seçme (showTimePicker) fonksiyonu
   Future<void> _saatiSec(BuildContext context) async {
     final TimeOfDay? secilen = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.blue[700]!,
+              onPrimary: Colors.white,
+              onSurface: Colors.blue[900]!,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (secilen != null && !_secilenSaatler.contains(secilen)) {
       setState(() {
         _secilenSaatler.add(secilen);
-        // Saatleri sıraya diz (görsel güzellik için)
-        _secilenSaatler.sort((a, b) {
-          double aTime = a.hour + a.minute / 60.0;
-          double bTime = b.hour + b.minute / 60.0;
-          return aTime.compareTo(bTime);
-        });
+        _secilenSaatler.sort((a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute));
       });
     }
   }
 
-  // Kaydetme/Güncelleme fonksiyonu
   void _ilaciKaydet() {
     final bool formGecerli = _formKey.currentState?.validate() ?? false;
     final bool saatSecili = _secilenSaatler.isNotEmpty;
 
     if (!saatSecili) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lütfen en az bir saat seçin!')),
+        SnackBar(
+          content: Text('Lütfen en az bir kullanım saati seçin!'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-      return; // İşlemi durdur
+      return;
     }
 
-    if (formGecerli && saatSecili) {
-      final yeniVeyaGuncelIlac = Ilac(
+    if (formGecerli) {
+      final yeniIlac = Ilac(
+        id: _duzenlemeModu ? widget.duzenlenecekIlac!.id : null,
         ad: _ilacAdiController.text,
-        saatler: _secilenSaatler, // Listeyi yolla
+        doz: _dozController.text,
+        tur: _secilenTur,
         durum: _secilenDurum!,
+        saatler: _secilenSaatler,
       );
-      // Bir önceki sayfaya (HomePage) bu Ilac nesnesini geri gönder
-      Navigator.pop(context, yeniVeyaGuncelIlac);
-    }
-  }
 
-  @override
-  void dispose() {
-    _ilacAdiController.dispose();
-    super.dispose();
+      Navigator.pop(context, yeniIlac);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Başlığı moda göre ayarla
-        title: Text(
-          _duzenlemeModu ? 'İlacı Düzenle' : 'Yeni İlaç Ekle',
-          style: TextStyle(color: Colors.white), // Yazı rengi
-        ),
-        // Geri oku (foregroundColor ile otomatik beyaz olur)
+        title: Text(_duzenlemeModu ? 'İlacı Düzenle' : 'Yeni İlaç Ekle'),
       ),
-      backgroundColor: Colors.white,
-      body: Padding(
-        padding: EdgeInsets.all(20.0),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(24.0),
         child: Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- İLAÇ ADI ALANI ---
+              _buildSectionTitle("İlaç Bilgileri"),
+              SizedBox(height: 16),
+
+              // İsim Alanı
               TextFormField(
                 controller: _ilacAdiController,
-                decoration: _inputDecoration('İlaç Adı (Örn: Parol)'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Lütfen ilaç adını girin';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 20.0),
-
-              // --- AÇ/TOK SEÇENEĞİ (Dropdown) ---
-              DropdownButtonFormField<String>(
-                value: _secilenDurum,
-                hint: Text('Durum (Aç / Tok)'),
-                decoration: _inputDecoration(''),
-                items: ['Aç', 'Tok'].map((String durum) {
-                  return DropdownMenuItem<String>(
-                    value: durum,
-                    child: Text(durum),
-                  );
-                }).toList(),
-                onChanged: (newValue) {
-                  setState(() {
-                    _secilenDurum = newValue;
-                  });
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Lütfen durum seçin (Aç/Tok)';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 20.0),
-
-              // --- ÇOKLU SAAT SEÇME ALANI ---
-              Text('Kullanım Saatleri:', style: TextStyle(fontSize: 16)),
-              SizedBox(height: 10.0),
-              // Saat etiketleri (Chip)
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 4.0,
-                children: _secilenSaatler.map((saat) {
-                  return Chip(
-                    label: Text(saat.format(context)),
-                    onDeleted: () {
-                      setState(() {
-                        _secilenSaatler.remove(saat);
-                      });
-                    },
-                    deleteIcon: Icon(Icons.close, size: 18),
-                  );
-                }).toList(),
-              ),
-              // Yeni saat ekleme butonu
-              TextButton.icon(
-                icon: Icon(Icons.add_alarm, color: Colors.blue[700]),
-                label: Text(
-                  '+ Yeni Saat Ekle',
-                  style: TextStyle(color: Colors.blue[700]),
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: 'İlaç Adı',
+                  hintText: 'Örn: Parol',
+                  prefixIcon: Icon(Icons.medication),
                 ),
-                onPressed: () => _saatiSec(context),
+                validator: (val) => val!.isEmpty ? 'İlaç adı gerekli' : null,
+              ),
+              SizedBox(height: 16),
+
+              // Doz Alanı
+              TextFormField(
+                controller: _dozController,
+                decoration: InputDecoration(
+                  labelText: 'Doz / Miktar',
+                  hintText: 'Örn: 500mg veya 1 Ölçek',
+                  prefixIcon: Icon(Icons.local_pharmacy_outlined),
+                ),
+              ),
+              SizedBox(height: 24),
+
+              // Tür Seçimi
+              _buildSectionTitle("İlaç Formu"),
+              SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                children: _ilacTurleri.map((tur) {
+                  final secili = _secilenTur == tur;
+                  return ChoiceChip(
+                    label: Text(tur),
+                    selected: secili,
+                    selectedColor: Colors.blue[100],
+                    labelStyle: TextStyle(
+                      color: secili ? Colors.blue[900] : Colors.black,
+                      fontWeight: secili ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    onSelected: (bool selected) {
+                      if (selected) {
+                        setState(() {
+                          _secilenTur = tur;
+                        });
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
+              SizedBox(height: 24),
+
+              // Aç/Tok Durumu
+              _buildSectionTitle("Kullanım Şekli"),
+              SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: RadioListTile<String>(
+                      title: Text("Aç"),
+                      value: "Aç",
+                      groupValue: _secilenDurum,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) => setState(() => _secilenDurum = val),
+                    ),
+                  ),
+                  Expanded(
+                    child: RadioListTile<String>(
+                      title: Text("Tok"),
+                      value: "Tok",
+                      groupValue: _secilenDurum,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) => setState(() => _secilenDurum = val),
+                    ),
+                  ),
+                ],
+              ),
+              // Eğer seçim yapılmadıysa gizli bir hata mesajı alanı
+              if (_secilenDurum == null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12.0),
+                  child: Text("Lütfen Aç/Tok durumunu seçin", style: TextStyle(color: Colors.red[700], fontSize: 12)),
+                ),
+
+              SizedBox(height: 24),
+
+              // Saat Seçimi
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildSectionTitle("Hatırlatma Saatleri"),
+                  TextButton.icon(
+                    onPressed: () => _saatiSec(context),
+                    icon: Icon(Icons.add_circle),
+                    label: Text("Saat Ekle"),
+                  ),
+                ],
               ),
 
-              Spacer(), // Butonu en alta itmek için
-              SizedBox(height: 20.0),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: _secilenSaatler.isEmpty
+                    ? Center(child: Text("Henüz saat eklenmedi", style: TextStyle(color: Colors.grey)))
+                    : Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: _secilenSaatler.map((saat) {
+                    return Chip(
+                      backgroundColor: Colors.white,
+                      side: BorderSide(color: Colors.blue[200]!),
+                      avatar: Icon(Icons.access_time, size: 18, color: Colors.blue[700]),
+                      label: Text(saat.format(context), style: TextStyle(fontWeight: FontWeight.bold)),
+                      deleteIcon: Icon(Icons.cancel, size: 18, color: Colors.red[300]),
+                      onDeleted: () => setState(() => _secilenSaatler.remove(saat)),
+                    );
+                  }).toList(),
+                ),
+              ),
 
-              // --- KAYDET / GÜNCELLE BUTONU ---
-              ElevatedButton(
-                onPressed: _ilaciKaydet,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16.0),
+              SizedBox(height: 32),
+
+              // Kaydet Butonu
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _ilaciKaydet,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[700],
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                   child: Text(
-                    _duzenlemeModu ? 'GÜNCELLE' : 'KAYDET',
-                    style: TextStyle(fontSize: 16.0),
+                    _duzenlemeModu ? 'Değişiklikleri Kaydet' : 'İlacı Oluştur',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
+              SizedBox(height: 20),
             ],
           ),
         ),
@@ -188,16 +256,14 @@ class _AddMedicinePageState extends State<AddMedicinePage> {
     );
   }
 
-  // TextField'ları tek tip yapmak için yardımcı fonksiyon
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10.0),
-        borderSide: BorderSide(color: Colors.blue, width: 2.0),
+  // Başlık stili için yardımcı widget
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue[900]
       ),
     );
   }
